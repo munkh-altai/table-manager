@@ -66,55 +66,47 @@
 - password change mode
 
 #### Installation guide
-1. create modules/core forlders in laravel projeect.
-2. download or git clone in modele/core
-3. add "Solarcms\\Core\\TableProperties\\": "modules/core/table-properties/src" to composer.json psr-4 section
-4. In the $providers array add the service providers for this package in config/app.php.
+1. install
 ```php
-Intervention\Image\ImageServiceProvider::class
-```
-5. Add the facade of this package to the $aliases array  in config/app.php.
- ```php
- 'Image' => Intervention\Image\Facades\Image::class
+composer require munkh-altai/table-manager
  ```
-6. composer du
-7. publish table properteis
-```
-php artisan vendor:publish --tag=tp
-```
-8. publish config
-```
-php artisan vendor:publish --tag=tp-config
-```
-9. set your route
+2. In the $providers array add the service providers for this package in config/app.php.
+
 ```php
-Route::group([
-    'prefix' =>'admin',
-    'as' => 'Solar.TableProperties::'], function() {
-
-
-    Route::get('/', function(){
-        abort(503);
-    });
-
-    Route::get('/{slug}/', 'AdminController@TableProperties');
-    Route::post('/{slug}/{action}', 'AdminController@TableProperties');
-
-});
+TableManager\TableManagerServiceProvider::class,
 ```
-10. add module name in use section your controller
+
+3. Add the facade of this package to the $aliases array  in config/app.php.
+ ```php
+ 'TableManager' => TableManager\Facade\TableManager::class,
+ ```
+4. composer du
+
+5. publish config
+```
+php artisan vendor:publish --tag=tm-config
+```
+6. set your route
 ```php
-use Solarcms\TableProperties\TableProperties;
-use Solarcms\Core\TableProperties\Tp\Tp;
+
+
+    Route::get('/{slug}/', 'AdminController@TableManager');
+    Route::post('/{slug}/{action}', 'AdminController@TableManager');
+
+
 ```
-11. create your view with css and javascript of table properties
+7. add module name in use section your controller
+```php
+use TableManager\TableManager;
+```
+8. create your view with css and javascript of table properties
 
 css
 ```html
-@if(Config::get('tp_config.tp_debug'))
-        <link rel="stylesheet" href="http://localhost:3000/css/tp.css" type="text/css"/>
+@if(Config::get('table-manager.debug'))
+        <link rel="stylesheet" href="http://localhost:3000/css/tm.css" type="text/css"/>
     @else
-        <link rel="stylesheet" href="{{ URL::asset('shared/table-properties/css/tp.css') }}" type="text/css"/>
+        <link rel="stylesheet" href="{{ URL::asset('shared/table-manager/css/tm.css') }}" type="text/css"/>
     @endif
 ```
 app div
@@ -132,16 +124,16 @@ javascript
  <script type="text/javascript" charset="utf-8" src="{{ URL::asset('shared/ckeditor/ckeditor.js')}}"></script>
     @if(Config::get('tp_config.tp_debug'))
         <script src="http://localhost:3000/js/dependencies.js"></script>
-        <script src="http://localhost:3000/js/tp.js"></script>
+        <script src="http://localhost:3000/js/tm.js"></script>
     @else
         <script type="text/javascript" charset="utf-8"
-                src="{{ URL::asset('shared/table-properties/js/dependencies.js')}}"></script>
+                src="{{ URL::asset('shared/table-manager/js/dependencies.js')}}"></script>
         <script type="text/javascript" charset="utf-8"
-                src="{{ URL::asset('shared/table-properties/js/tp.js')}}"></script>
+                src="{{ URL::asset('shared/table-manager/js/tm.js')}}"></script>
     @endif
 ```
 
-12. Last add once funtion to your controller
+9. Last add once funtion to your controller
 ```php
  public function TableProperties($slug, $action = 'index') {
 
@@ -154,6 +146,49 @@ javascript
 
 ```
 
+10. Crate CRUD funciton
+```php
+public function users($action)
+    {
+
+        $tm = new TableManager();
+
+        $tm->viewName = 'table-manager';
+        $tm->table = 'users';
+        $tm->page_name = 'Хэрэглэгч';
+        $tm->identity_name = 'id';
+        $tm->grid_columns = [
+            'users.name',
+            'users.email',
+            'users.id'];
+        $tm->grid_default_order_by = 'users.id DESC';
+        $tm->formType = 'page';
+        $tm->created_at = 'created_at';
+        $tm->updated_at = 'updated_at';
+        $tm->where_condition = [];
+
+
+        $tm->grid_output_control = [
+
+            ['column' => 'name', 'title' => 'Нэр', 'type' => '--text', 'fixed' => false],
+            ['column' => 'email', 'title' => 'И-мэйл', 'type' => '--text', 'fixed' => false],
+
+        ];
+
+        $tm->form_input_control = [
+
+            ['column' => 'name', 'title' => 'Нэр', 'type' => '--text', 'value' => null, 'validate' => 'required'],
+
+            ['column' => 'email', 'title' => 'И-мэйл', 'type' => '--text', 'value' => null, 'validate' => 'required|email|unique:users,email,NULL,' . $tm->identity_name],
+        ];
+
+
+
+        return $tm->run($action);
+
+
+    }
+```
 
 #### Configration
 
