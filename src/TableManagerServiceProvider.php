@@ -4,6 +4,7 @@ namespace TableManager;
 
 use Illuminate\Support\ServiceProvider as ServiceProvider;
 
+
 class TableManagerServiceProvider extends ServiceProvider
 {
 
@@ -34,6 +35,12 @@ class TableManagerServiceProvider extends ServiceProvider
     {
 
         $this->mergeConfigFrom(__DIR__ . '/Config/table-manager.php', 'TableManager');
+
+        $this->app->singleton('TableManager', function ($app) {
+            return new TableManager(config('table-manager'));
+        });
+
+        $this->app->alias('TableManager', 'TableManager\TableManager');
 
     }
 }
