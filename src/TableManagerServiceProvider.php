@@ -40,6 +40,7 @@ class TableManagerServiceProvider extends ServiceProvider
             return new TableManager(config('table-manager'));
         });
 
+
         $this->app->alias('TableManager', 'TableManager\TableManager');
 
     }

@@ -12,5 +12,10 @@
     "require": {
         "php": "^5.3.3 || ^7.0",
         "intervention/image": "^2.3@dev"
-    }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TableManager\\": "src"
+        }
+    },
 }
