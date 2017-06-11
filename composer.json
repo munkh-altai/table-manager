@@ -1,0 +1,16 @@
+{
+    "name": "munkh-altai/table-manager",
+    "description": "table manager for laravel",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Munkh-Altai",
+            "email": "s4_hero@yahoo.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": "^5.3.3 || ^7.0",
+        "intervention/image": "^2.3@dev"
+    }
+}
