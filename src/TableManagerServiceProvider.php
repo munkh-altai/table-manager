@@ -22,6 +22,9 @@ class TableManagerServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__ . '/Config/table-manager.php' => config_path('table-manager.php'),
         ], 'tm-config');
+        $this->publishes([
+            __DIR__ . '/migrations/2017_06_12_023933_createTableManagerTables.php' => 'database/migrations/2017_06_12_023933_createTableManagerTables.php',
+        ], 'tm-tables');
 
 
     }

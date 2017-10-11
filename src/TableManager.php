@@ -19,6 +19,7 @@ class TableManager
 {
 
 
+    public $base_url = '';
     public $viewName = '';
     public $table = '';                     // required, table for use for sql_insert(), sql_update(), sql_update_grid() and sql_delete()
     public $identity_name = '';             // required, column name of id primary key
@@ -44,7 +45,7 @@ class TableManager
     public $grid_columns = [];
     public $grid_default_order_by = '';     // free-form 'order by' clause. Not used if grid_sql is specified. Example: column1 desc, column2 asc
     public $grid_input_control = [];   // for grid(), define inputs like select boxes, checkboxes, etc... *info on usage below*
-    public $grid_output_control = [];  // for grid(). define outputs like --email to make a clickable mailto or --document to make a link. *info on usage below*
+    public $grid_output_control = [];  // for grid(). define outputs like email to make a clickable mailto or document to make a link. *info on usage below*
     public $pageLimit = 500;               // pagination limit number of records per page
     public $pagination_position = 'bottom'; // both, top, bottom
 
@@ -133,6 +134,7 @@ class TableManager
 
     //map
     public $googleMap = false;
+    public $arcServer = '';
 
     //advanced
     public $advancedSearch = [
@@ -173,6 +175,7 @@ class TableManager
     public $gridTopWithAdvenced = 145;
 
     public $procedure = "";
+    public $gridHelper = null;
 
 
     function __construct()
@@ -383,10 +386,40 @@ class TableManager
             $order = ['column' => $this->identity_name, 'sortOrder' => 'ASC', 'page_name' => $page_name];
         }
 
+        $form_input_control = [];
+
+        foreach ($this->form_input_control as $control){
+            if($control['type'] == 'combobox'){
+                $options_ = $control['options'];
+                if(isset($options_['table'])){
+
+                    $options = $this->getComboOptions($control['options']);
+
+                    if(isset($control['options']['with_translation']))
+                        $control['with_translation'] = $control['options']['with_translation'];
+                    $control['options'] = $options;
+                }
+
+            }
+
+            $form_input_control[] = $control;
+        }
+        if($this->gridHelper){
+            $helperData = DB::table($this->gridHelper['table'])->select($this->gridHelper['columns'])->orderBY($this->gridHelper['order'][0],$this->gridHelper['order'][1])->get();
+
+            $this->gridHelper = [
+                'data'=>$helperData,
+                'translation'=>$this->gridHelper['translation'],
+                'title'=>$this->gridHelper['title']
+            ];
+        }
+
+
         $setup = [
             'button_texts' => $buttons,
+            'base_url' => $this->base_url,
             'locales' => $locales,
-            'form_input_control' => $this->form_input_control,
+            'form_input_control' => $form_input_control,
             'translate_form_input_control' => $this->translate_form_input_control,
             'save_first_id_column' => $this->save_first_id_column,
             'multi_items_form_input_control' => $this->multi_items_form_input_control,
@@ -400,7 +433,6 @@ class TableManager
             'permission' => $this->permission,
             'just_info' => $this->just_info,
             'ifUpdateDisabledCanEditColumns' => $this->ifUpdateDisabledCanEditColumns,
-            'form_datas' => $this->get_form_datas(),
             'default_locale' => Session::get('locale'),
             'update_row' => $this->update_row,
             'identity_name' => $this->identity_name,
@@ -423,12 +455,52 @@ class TableManager
             'hideMainOrder' => $this->hideMainOrder,
             'after_save_redirect'=>$this->after_save_redirect,
             'after_save_redirect_url'=>$this->after_save_redirect_url,
+            'arcServer'=>$this->arcServer,
+            'gridHelper'=>$this->gridHelper,
         ];
 
         //dd($setup);
 
 
         return view($viewName, compact('page_name', 'setup'));
+    }
+
+    public function getComboOptions ($options){
+
+        $order = explode(" ", $options['grid_default_order_by']);
+
+        $value_column = $options['valueField'];
+        $label_column = $options['textField'];
+
+        $pre_data = DB::table($options['table'])->select("$value_column as value", "$label_column as label")->orderBy($order[0], $order[1]);
+
+        if (isset($options['where_condition'])) {
+
+            foreach ($options['where_condition'] as $where_condition) {
+
+                if (isset($where_condition[3]) && $where_condition[3] == 'or') {
+
+                    $pre_data->orWhere($where_condition[0], $where_condition[1], $where_condition[2]);
+                } else {
+                    $pre_data->where($where_condition[0], $where_condition[1], $where_condition[2]);
+                }
+
+            }
+        }
+
+        if (isset($options['where_condition_raw'])) {
+
+            foreach ($options['where_condition_raw'] as $where_condition_raw) {
+
+
+                $pre_data->whereRaw($where_condition_raw);
+
+
+            }
+        }
+
+
+        return $pre_data->get();
     }
 
     public function gridList()
@@ -456,7 +528,7 @@ class TableManager
         }
 
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combogrid' || $formControl['type'] == '--combobox' || $formControl['type'] == '--tag' || $formControl['type'] == '--combobox-addable' || $formControl['type'] == '--combobox-hidden') {
+            if ($formControl['type'] == 'combogrid' || $formControl['type'] == 'combobox' || $formControl['type'] == 'tag' || $formControl['type'] == 'combobox-addable' || $formControl['type'] == 'combobox-hidden') {
 
                 if (isset($formControl['save']) && $formControl['save'] == false) {
 
@@ -464,19 +536,25 @@ class TableManager
                 {
                     $options = $formControl['options'];
 
-                    if (isset($options['join']) && $options['join'] == false) {
 
-                    } else {
-                        $table_data->join($options['table'], "$this->table." . $formControl['column'], '=', $options['table'] . "." . $options['valueField']);
+                    if(isset($options['table'])){
+
+                        if (isset($options['join']) && $options['join'] == false) {
+
+                        } else {
+                            $table_data->join($options['table'], "$this->table." . $formControl['column'], '=', $options['table'] . "." . $options['valueField']);
+                        }
                     }
+
+
 
 
                 }
 
             }
-            if ($formControl['type'] == '--group') {
+            if ($formControl['type'] == 'group') {
                 foreach ($formControl['controls'] as $subformControl) {
-                    if ($subformControl['type'] == '--combogrid' || $subformControl['type'] == '--combobox' || $subformControl['type'] == '--tag' || $subformControl['type'] == '--combobox-addable' || $subformControl['type'] == '--combobox-hidden') {
+                    if ($subformControl['type'] == 'combogrid' || $subformControl['type'] == 'combobox' || $subformControl['type'] == 'tag' || $subformControl['type'] == 'combobox-addable' || $subformControl['type'] == 'combobox-hidden') {
 
                         if (isset($subformControl['save']) && $subformControl['save'] == false) {
 
@@ -506,11 +584,11 @@ class TableManager
 
             foreach ($this->multi_items_form_input_control as $multiFormControl) {
 
-                if ($multiFormControl['type'] == '--combogrid'
-                    || $multiFormControl['type'] == '--combobox'
-                    || $multiFormControl['type'] == '--tag'
-                    || $multiFormControl['type'] == '--combobox-addable'
-                    || $multiFormControl['type'] == '--combobox-hidden'
+                if ($multiFormControl['type'] == 'combogrid'
+                    || $multiFormControl['type'] == 'combobox'
+                    || $multiFormControl['type'] == 'tag'
+                    || $multiFormControl['type'] == 'combobox-addable'
+                    || $multiFormControl['type'] == 'combobox-hidden'
                 ) {
 
                     if (isset($multiFormControl['save']) && $multiFormControl['save'] == false) {
@@ -741,7 +819,7 @@ class TableManager
 
 
         foreach ($formControls as $formControl) {
-            if ($formControl['type'] == '--combogrid') {
+            if ($formControl['type'] == 'combogrid') {
 
                 $options = $formControl['options'];
                 $order = explode(" ", $options['grid_default_order_by']);
@@ -758,7 +836,7 @@ class TableManager
                 //->take($this->pageLimit)->get()
 
             }
-            if ($formControl['type'] == '--combobox' || $formControl['type'] == '--tag' || $formControl['type'] == '--combobox-addable') {
+            if ($formControl['type'] == 'combobox' || $formControl['type'] == 'tag' || $formControl['type'] == 'combobox-addable') {
 
                 $options = $formControl['options'];
 
@@ -810,7 +888,7 @@ class TableManager
 
 
             }
-            if ($formControl['type'] == '--combobox-addable') {
+            if ($formControl['type'] == 'combobox-addable') {
                 $options = $formControl['options'];
 
 
@@ -824,7 +902,7 @@ class TableManager
 
 
             }
-            if ($formControl['type'] == '--group') {
+            if ($formControl['type'] == 'group') {
                 $controls = $formControl['controls'];
 
 
@@ -914,14 +992,14 @@ class TableManager
         foreach ($this->form_input_control as $formControl) {
 
             if (isset($formControl['column'])) {
-                if ($formControl['type'] == '--password-confirm' || $formControl['type'] == '--password') {
+                if ($formControl['type'] == 'password-confirm' || $formControl['type'] == 'password') {
 
                 } else
                     $table_data->addSelect("$this->table." . $formControl['column']);
             }
 
 
-//            if($formControl['type'] == '--combogrid' || $formControl['type'] == '--combobox' || $formControl['type'] == '--tag' || $formControl['type'] == '--combobox-addable' || $formControl['type'] == '--combobox-hidden'){
+//            if($formControl['type'] == 'combogrid' || $formControl['type'] == 'combobox' || $formControl['type'] == 'tag' || $formControl['type'] == 'combobox-addable' || $formControl['type'] == 'combobox-hidden'){
 //
 //                $options = $formControl['options'];
 //
@@ -930,13 +1008,13 @@ class TableManager
 //
 //            }
 
-            if ($formControl['type'] == '--group') {
+            if ($formControl['type'] == 'group') {
                 foreach ($formControl['controls'] as $subformControl) {
 
                     if (isset($subformControl['column']))
                         $table_data->addSelect("$this->table." . $subformControl['column']);
 
-//                    if($subformControl['type'] == '--combogrid' || $subformControl['type'] == '--combobox' || $subformControl['type'] == '--tag' || $subformControl['type'] == '--combobox-addable' || $subformControl['type'] == '--combobox-hidden'){
+//                    if($subformControl['type'] == 'combogrid' || $subformControl['type'] == 'combobox' || $subformControl['type'] == 'tag' || $subformControl['type'] == 'combobox-addable' || $subformControl['type'] == 'combobox-hidden'){
 //
 //                        if(isset($subformControl['save']) && $subformControl['save'] == false){
 //
@@ -1064,7 +1142,8 @@ class TableManager
 
 
         $formData = Request::input('data');
-        $translateData = Request::input('translateData');
+//        $translateData = Request::input('translateData');
+        $translateData = $formData;
         $multiItems = Request::input('multiItems');
 
         $rules = [];
@@ -1075,19 +1154,19 @@ class TableManager
             if(isset($formControl['skip'])){
 
             } else {
-                if ($formControl['type'] == '--group') {
+                if ($formControl['type'] == 'group') {
                     $rules_pre = $this->getRule($formControl['controls']);
                     $rules = array_merge($rules, $rules_pre);
                     foreach ($formControl['controls'] as $subformControl) {
-                        if ($subformControl['type'] == '--group') {
+                        if ($subformControl['type'] == 'group') {
 
                         } else {
-                            if ($subformControl['type'] == '--checkbox') {
+                            if ($subformControl['type'] == 'checkbox') {
                                 $checkBoxValue = $formData[$subformControl['column']];
-                                if ($checkBoxValue == 1)
-                                    $checkBoxValue = 1;
+                                if ($checkBoxValue == '1')
+                                    $checkBoxValue = '1';
                                 else
-                                    $checkBoxValue = 0;
+                                    $checkBoxValue = '0';
                                 $insertQuery[$subformControl['column']] = $checkBoxValue;
 
                             } else
@@ -1097,17 +1176,34 @@ class TableManager
 
                     }
                 } else {
-                    if ($formControl['type'] == '--checkbox') {
+                    if ($formControl['type'] == 'checkbox') {
+//                        dump($formControl);
                         $checkBoxValue = $formData[$formControl['column']];
-                        if ($checkBoxValue == 1)
-                            $checkBoxValue = 1;
+                        if ($checkBoxValue == '1')
+                            $checkBoxValue = '1';
                         else
-                            $checkBoxValue = 0;
+                            $checkBoxValue = '0';
                         $insertQuery[$formControl['column']] = $checkBoxValue;
 
-                    } elseif ($formControl['type'] == '--password') {
+                    } elseif ($formControl['type'] == 'password') {
                         $insertQuery[$formControl['column']] = bcrypt($formData[$formControl['column']]);
-                    } elseif ($formControl['type'] == '--password-confirm') {
+                    } elseif ($formControl['type'] == 'combobox') {
+                        if(isset($formControl['multiple'])){
+                            if($formControl['multiple']){
+                                $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+                            } else {
+                                $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                            }
+                        } else {
+                            $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                        }
+
+                    }  elseif ($formControl['type'] == 'arcLayer') {
+
+                        $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+
+
+                    } elseif ($formControl['type'] == 'password-confirm') {
 //                          /  $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
                     }  else
                         $insertQuery[$formControl['column']] = $formData[$formControl['column']];
@@ -1130,30 +1226,30 @@ class TableManager
 
             foreach ($this->translate_form_input_control as $translationformControl) {
                 $translationformControl['trans_value'] = [];
-                foreach ($translateData as $translate) {
-                    $translate_value = [];
+//                foreach ($translateData as $translate) {
+//                    $translate_value = [];
+//
+//                    $translate_value['locale'] = $translate['locale'];
+//
+//
+//                    if ($translationformControl['type'] == 'checkbox') {
+//                        $checkBoxValue = $formData[$translationformControl['column']];
+//                        if ($checkBoxValue == 1)
+//                            $checkBoxValue = 1;
+//                        else
+//                            $checkBoxValue = 0;
+//
+//
+//                        $translate_value['value'] = $checkBoxValue;
+//
+//                    } else
+//                        $translate_value['value'] = $translate['data'][$translationformControl['column']];
+//
+//                    $translationformControl['trans_value'][] = $translate_value;
+//                }
 
-                    $translate_value['locale'] = $translate['locale'];
 
-
-                    if ($translationformControl['type'] == '--checkbox') {
-                        $checkBoxValue = $formData[$translationformControl['column']];
-                        if ($checkBoxValue == 1)
-                            $checkBoxValue = 1;
-                        else
-                            $checkBoxValue = 0;
-
-
-                        $translate_value['value'] = $checkBoxValue;
-
-                    } else
-                        $translate_value['value'] = $translate['data'][$translationformControl['column']];
-
-                    $translationformControl['trans_value'][] = $translate_value;
-                }
-
-
-                $insertQuery[$translationformControl['column']] = json_encode($translationformControl['trans_value']);
+                $insertQuery[$translationformControl['column']] = json_encode($formData[$translationformControl['column']]);
 
 
             }
@@ -1202,12 +1298,12 @@ class TableManager
                     if(isset($formControl['skip'])){
 
                     } else {
-                        if ($formControl['type'] == '--group') {
+                        if ($formControl['type'] == 'group') {
                             foreach ($formControl['controls'] as $subformControl) {
-                                if ($subformControl['type'] == '--group') {
+                                if ($subformControl['type'] == 'group') {
 
                                 } else {
-                                    if ($subformControl['type'] == '--checkbox') {
+                                    if ($subformControl['type'] == 'checkbox') {
                                         $checkBoxValue = $multiItem[$subformControl['column']];
                                         if ($checkBoxValue == 1)
                                             $checkBoxValue = 1;
@@ -1222,7 +1318,7 @@ class TableManager
 
                             }
                         } else {
-                            if ($formControl['type'] == '--checkbox') {
+                            if ($formControl['type'] == 'checkbox') {
                                 $checkBoxValue = $multiItem[$formControl['column']];
                                 if ($checkBoxValue == 1)
                                     $checkBoxValue = 1;
@@ -1230,9 +1326,9 @@ class TableManager
                                     $checkBoxValue = 0;
                                 $insertQuery[$formControl['column']] = $checkBoxValue;
 
-                            } elseif ($formControl['type'] == '--password') {
+                            } elseif ($formControl['type'] == 'password') {
                                 $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
-                            } elseif ($formControl['type'] == '--password-confirm') {
+                            } elseif ($formControl['type'] == 'password-confirm') {
 //                          /  $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
                             } else
                                 $insertQuery[$formControl['column']] = $multiItem[$formControl['column']];
@@ -1242,6 +1338,7 @@ class TableManager
 
 
                 }
+
 
                 if ($checkFirst == 0) {
 
@@ -1435,7 +1532,7 @@ class TableManager
 
         $formData = Request::input('data');
         $id = Request::input('id');
-        $translateData = Request::input('translateData');
+        $translateData = $formData;
         $multiItems = Request::input('multiItems');
 
         $rules = [];
@@ -1454,17 +1551,17 @@ class TableManager
 
                         foreach ($this->ifUpdateDisabledCanEditColumns as $ifUpdateDisabledCanEditColumn) {
 
-                            if ($formControl['type'] == '--group') {
+                            if ($formControl['type'] == 'group') {
                                 foreach ($formControl['controls'] as $subformControl) {
-                                    if ($subformControl['type'] == '--group') {
+                                    if ($subformControl['type'] == 'group') {
 
                                     } else {
-                                        if ($subformControl['type'] == '--checkbox') {
+                                        if ($subformControl['type'] == 'checkbox') {
                                             $checkBoxValue = $formData[$subformControl['column']];
-                                            if ($checkBoxValue == 1)
-                                                $checkBoxValue = 1;
+                                            if ($checkBoxValue == '1')
+                                                $checkBoxValue = '1';
                                             else
-                                                $checkBoxValue = 0;
+                                                $checkBoxValue = '0';
                                             $insertQuery[$subformControl['column']] = $checkBoxValue;
 
                                         } else
@@ -1475,19 +1572,35 @@ class TableManager
                             } else {
                                 if ($ifUpdateDisabledCanEditColumn == $formControl['column']) {
 
-                                    if ($formControl['type'] == '--checkbox') {
+                                    if ($formControl['type'] == 'checkbox') {
                                         $checkBoxValue = $formData[$formControl['column']];
-                                        if ($checkBoxValue == 1)
-                                            $checkBoxValue = 1;
+                                        if ($checkBoxValue == '1')
+                                            $checkBoxValue = '1';
                                         else
-                                            $checkBoxValue = 0;
+                                            $checkBoxValue = '0';
                                         $insertQuery[$formControl['column']] = $checkBoxValue;
 
-                                    } elseif ($formControl['type'] == '--password') {
+                                    } elseif ($formControl['type'] == 'password') {
                                         $insertQuery[$formControl['column']] = bcrypt($formData[$formControl['column']]);
-                                    } elseif ($formControl['type'] == '--password-confirm') {
+                                    } elseif ($formControl['type'] == 'password-confirm') {
 //                          /  $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
-                                    } else
+                                    } elseif ($formControl['type'] == 'combobox') {
+                                        if(isset($formControl['multiple'])){
+                                            if($formControl['multiple']){
+                                                $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+                                            } else {
+                                                $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                                            }
+                                        } else {
+                                            $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                                        }
+
+                                    }  elseif ($formControl['type'] == 'arcLayer') {
+
+                                        $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+
+                                    }
+                                    else
                                         $insertQuery[$formControl['column']] = $formData[$formControl['column']];
                                 }
                             }
@@ -1495,19 +1608,19 @@ class TableManager
                     }
 
                 } else {
-                    if ($formControl['type'] == '--group') {
+                    if ($formControl['type'] == 'group') {
                         $rules_pre = $this->getRule($formControl['controls'], $id);
                         $rules = array_merge($rules, $rules_pre);
                         foreach ($formControl['controls'] as $subformControl) {
-                            if ($subformControl['type'] == '--group') {
+                            if ($subformControl['type'] == 'group') {
 
                             } else {
-                                if ($subformControl['type'] == '--checkbox') {
+                                if ($subformControl['type'] == 'checkbox') {
                                     $checkBoxValue = $formData[$subformControl['column']];
-                                    if ($checkBoxValue == 1)
-                                        $checkBoxValue = 1;
+                                    if ($checkBoxValue == '1')
+                                        $checkBoxValue = '1';
                                     else
-                                        $checkBoxValue = 0;
+                                        $checkBoxValue = '0';
                                     $insertQuery[$subformControl['column']] = $checkBoxValue;
 
                                 } else
@@ -1516,19 +1629,34 @@ class TableManager
 
                         }
                     } else {
-                        if ($formControl['type'] == '--checkbox') {
+                        if ($formControl['type'] == 'checkbox') {
                             $checkBoxValue = $formData[$formControl['column']];
-                            if ($checkBoxValue == 1)
-                                $checkBoxValue = 1;
+                            if ($checkBoxValue == '1')
+                                $checkBoxValue = '1';
                             else
-                                $checkBoxValue = 0;
+                                $checkBoxValue = '0';
                             $insertQuery[$formControl['column']] = $checkBoxValue;
 
-                        } elseif ($formControl['type'] == '--password') {
+                        } elseif ($formControl['type'] == 'password') {
                             $insertQuery[$formControl['column']] = bcrypt($formData[$formControl['column']]);
-                        } elseif ($formControl['type'] == '--password-confirm') {
+                        } elseif ($formControl['type'] == 'password-confirm') {
 //                          /  $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
-                        } else
+                        } elseif ($formControl['type'] == 'combobox') {
+                            if(isset($formControl['multiple'])){
+                                if($formControl['multiple']){
+                                    $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+                                } else {
+                                    $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                                }
+                            } else {
+                                $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                            }
+
+                        }  elseif ($formControl['type'] == 'arcLayer') {
+
+                            $insertQuery[$formControl['column']] = json_encode($formData[$formControl['column']]);
+
+                        }else
                             $insertQuery[$formControl['column']] = $formData[$formControl['column']];
 
                     }
@@ -1549,33 +1677,33 @@ class TableManager
             $rules = array_merge($rules, $rules_pre);
 
             foreach ($this->translate_form_input_control as $translationformControl) {
-                $translationformControl['trans_value'] = [];
-                foreach ($translateData as $translate) {
-                    $translate_value = [];
-
-                    $translate_value['locale'] = $translate['locale'];
-
-
-                    if ($translationformControl['type'] == '--checkbox') {
-                        $checkBoxValue = $formData[$translationformControl['column']];
-                        if ($checkBoxValue == 1)
-                            $checkBoxValue = 1;
-                        else
-                            $checkBoxValue = 0;
-
-
-                        $translate_value['value'] = $checkBoxValue;
-
-                    } else
-                        $translate_value['value'] = $translate['data'][$translationformControl['column']];
-
-                    $translationformControl['trans_value'][] = $translate_value;
-                }
-
-
-                $insertQuery[$translationformControl['column']] = json_encode($translationformControl['trans_value']);
+//                $translationformControl['trans_value'] = [];
+//                foreach (c as $translate) {
+//                    $translate_value = [];
+//
+//                    $translate_value['locale'] = $translate['locale'];
+//
+//
+//                    if ($translationformControl['type'] == 'checkbox') {
+//                        $checkBoxValue = $formData[$translationformControl['column']];
+//                        if ($checkBoxValue == 1)
+//                            $checkBoxValue = 1;
+//                        else
+//                            $checkBoxValue = 0;
+//
+//
+//                        $translate_value['value'] = $checkBoxValue;
+//
+//                    } else
+//                        $translate_value['value'] = $translate['data'][$translationformControl['column']];
+//
+//                    $translationformControl['trans_value'][] = $translate_value;
+//                }
 
 
+//                $insertQuery[$translationformControl['column']] = json_encode($formData['trans_value']);
+
+                $insertQuery[$translationformControl['column']] = json_encode($formData[$translationformControl['column']]);
             }
 
 
@@ -1617,12 +1745,12 @@ class TableManager
                     if(isset($formControl['skip'])){
 
                     } else {
-                        if ($formControl['type'] == '--group') {
+                        if ($formControl['type'] == 'group') {
                             foreach ($formControl['controls'] as $subformControl) {
-                                if ($subformControl['type'] == '--group') {
+                                if ($subformControl['type'] == 'group') {
 
                                 } else {
-                                    if ($subformControl['type'] == '--checkbox') {
+                                    if ($subformControl['type'] == 'checkbox') {
                                         $checkBoxValue = $multiItem[$subformControl['column']];
                                         if ($checkBoxValue == 1)
                                             $checkBoxValue = 1;
@@ -1636,7 +1764,7 @@ class TableManager
 
                             }
                         } else {
-                            if ($formControl['type'] == '--checkbox') {
+                            if ($formControl['type'] == 'checkbox') {
                                 $checkBoxValue = $multiItem[$formControl['column']];
                                 if ($checkBoxValue == 1)
                                     $checkBoxValue = 1;
@@ -1644,9 +1772,9 @@ class TableManager
                                     $checkBoxValue = 0;
                                 $insertQuery[$formControl['column']] = $checkBoxValue;
 
-                            } elseif ($formControl['type'] == '--password') {
+                            } elseif ($formControl['type'] == 'password') {
                                 $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
-                            } elseif ($formControl['type'] == '--password-confirm') {
+                            } elseif ($formControl['type'] == 'password-confirm') {
 //                          /  $insertQuery[$formControl['column']] = bcrypt($multiItem[$formControl['column']]);
                             } else
                                 $insertQuery[$formControl['column']] = $multiItem[$formControl['column']];
@@ -1830,7 +1958,7 @@ class TableManager
         $deleted = DB::table($this->table)->where("$this->identity_name", '=', $id)->delete();
 
         if ($deleted)
-            return 'success';
+            return Response::json("success", 200);
         else
             return 'error';
 
@@ -1848,23 +1976,23 @@ class TableManager
 
 
                 if ($type == 'date') {
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--date', 'validate' => ''];
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--date'];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'date', 'validate' => ''];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'date'];
                 } elseif ($type == 'datetime' || $type == 'timestamp') {
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--datetime', 'validate' => ''];
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--datetime'];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'datetime', 'validate' => ''];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'datetime'];
                 } elseif ($type == 'blob')
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--textarea', 'validate' => ''];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'textarea', 'validate' => ''];
                 elseif ($type == 'tinyint(1)') {
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--checkbox', 'value' => false, 'validate' => ''];
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--checkbox'];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'checkbox', 'value' => false, 'validate' => ''];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'checkbox'];
                 } elseif (mb_strstr($type, 'short') || mb_strstr($type, 'int') || mb_strstr($type, 'long') || mb_strstr($type, 'float') || mb_strstr($type, 'double') || mb_strstr($type, 'decimal')) {
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--number', 'validate' => ''];
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--number', 'value' => null];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'number', 'validate' => ''];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'number', 'value' => null];
                 } elseif (mb_strstr($type, 'varchar')) {
 
-                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--text', 'value' => '', 'validate' => ''];
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--text'];
+                    $this->form_input_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'text', 'value' => '', 'validate' => ''];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'text'];
                 }
 
 
@@ -1877,16 +2005,16 @@ class TableManager
 
 
                 if ($type == 'date')
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--date'];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'date'];
 
                 elseif ($type == 'datetime' || $type == 'timestamp')
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--datetime'];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'datetime'];
                 elseif ($type == 'tinyint(1)')
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--checkbox'];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'checkbox'];
                 elseif (mb_strstr($type, 'short') || mb_strstr($type, 'int') || mb_strstr($type, 'long') || mb_strstr($type, 'float') || mb_strstr($type, 'double') || mb_strstr($type, 'decimal'))
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--number'];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'number'];
                 elseif (mb_strstr($type, 'varchar'))
-                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => '--text'];
+                    $this->grid_output_control[] = ['column' => $column_name, 'title' => $column_name, 'type' => 'text'];
 
 
             }
@@ -1976,7 +2104,7 @@ class TableManager
         $searchValue = Request::input('searchValue');
 
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combogrid' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combogrid' && $formControl['column'] == $column) {
 
                 $options = $formControl['options'];
                 $order = explode(" ", $options['grid_default_order_by']);
@@ -2030,7 +2158,7 @@ class TableManager
         /// saijruulah
         $options = null;
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combogrid' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combogrid' && $formControl['column'] == $column) {
 
                 $options = $formControl['options'];
 
@@ -2052,7 +2180,7 @@ class TableManager
 
         $options = null;
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combogrid' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combogrid' && $formControl['column'] == $column) {
 
                 $options = $formControl['options'];
 
@@ -2065,7 +2193,7 @@ class TableManager
 
         $insertQuery = [];
         foreach ($options['form_input_control'] as $formControl) {
-            if ($formControl['type'] == '--checkbox') {
+            if ($formControl['type'] == 'checkbox') {
                 $checkBoxValue = $formData[$formControl['column']];
                 if ($checkBoxValue == 1)
                     $checkBoxValue = 1;
@@ -2099,7 +2227,7 @@ class TableManager
 
         $options = null;
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combogrid' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combogrid' && $formControl['column'] == $column) {
 
                 $options = $formControl['options'];
 
@@ -2111,7 +2239,7 @@ class TableManager
 
         $insertQuery = [];
         foreach ($options['form_input_control'] as $formControl) {
-            if ($formControl['type'] == '--checkbox') {
+            if ($formControl['type'] == 'checkbox') {
                 $checkBoxValue = $formData[$formControl['column']];
                 if ($checkBoxValue == 'true')
                     $checkBoxValue = 1;
@@ -2143,7 +2271,7 @@ class TableManager
 
             $options = null;
             foreach ($this->form_input_control as $formControl) {
-                if ($formControl['type'] == '--combogrid' && $formControl['column'] == $column) {
+                if ($formControl['type'] == 'combogrid' && $formControl['column'] == $column) {
 
                     $options = $formControl['options'];
 
@@ -2156,7 +2284,7 @@ class TableManager
             $deleted = DB::table($options['table'])->where('id', '=', $id)->delete();
 
             if ($deleted)
-                return 'success';
+                return Response::json("success", 200);
             else
                 return 'error';
         }
@@ -2177,18 +2305,18 @@ class TableManager
         }
         $table = '';
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combobox-addable' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combobox-addable' && $formControl['column'] == $column) {
 
                 $form_input_control = $formControl['options']['form_input_control'];
                 $table = $formControl['options']['table'];
 
                 foreach ($form_input_control as $formControl2) {
-                    if ($formControl2['type'] == '--group') {
+                    if ($formControl2['type'] == 'group') {
                         foreach ($formControl2['controls'] as $subformControl) {
-                            if ($subformControl['type'] == '--group') {
+                            if ($subformControl['type'] == 'group') {
 
                             } else {
-                                if ($subformControl['type'] == '--checkbox') {
+                                if ($subformControl['type'] == 'checkbox') {
                                     $checkBoxValue = $formData[$subformControl['column']];
                                     if ($checkBoxValue == 1)
                                         $checkBoxValue = 1;
@@ -2202,7 +2330,7 @@ class TableManager
 
                         }
                     } else {
-                        if ($formControl2['type'] == '--checkbox') {
+                        if ($formControl2['type'] == 'checkbox') {
                             $checkBoxValue = $formData[$formControl2['column']];
                             if ($checkBoxValue == 1)
                                 $checkBoxValue = 1;
@@ -2235,14 +2363,14 @@ class TableManager
                 foreach ($subItem['form_input_control'] as $SformControl) {
 
 
-                    if ($SformControl['type'] == '--combobox-addable') {
+                    if ($SformControl['type'] == 'combobox-addable') {
 
 
                         $form_input_control = $SformControl['options']['form_input_control'];
                         $table = $SformControl['options']['table'];
 
                         foreach ($form_input_control as $formControl2) {
-                            if ($formControl2['type'] == '--checkbox') {
+                            if ($formControl2['type'] == 'checkbox') {
                                 $checkBoxValue = $formData[$formControl2['column']];
                                 if ($checkBoxValue == 1)
                                     $checkBoxValue = 1;
@@ -2279,7 +2407,7 @@ class TableManager
         $table_data = null;
 
         foreach ($this->form_input_control as $formControl) {
-            if ($formControl['type'] == '--combobox-addable' && $formControl['column'] == $column) {
+            if ($formControl['type'] == 'combobox-addable' && $formControl['column'] == $column) {
 
                 $table = $formControl['options']['table'];
                 $grid_columns = $formControl['options']['grid_columns'];
@@ -2298,7 +2426,7 @@ class TableManager
                 foreach ($subItem['form_input_control'] as $SformControl) {
 
 
-                    if ($SformControl['type'] == '--combobox-addable') {
+                    if ($SformControl['type'] == 'combobox-addable') {
 
 
                         $table = $SformControl['options']['table'];
@@ -2333,9 +2461,9 @@ class TableManager
                             $table = $subItem['table'];
                             $formData = $item;
                             foreach ($subItem['form_input_control'] as $formControl) {
-                                if ($formControl['type'] == '--group') {
+                                if ($formControl['type'] == 'group') {
                                     foreach ($formControl['controls'] as $sformControl) {
-                                        if ($sformControl['type'] == '--checkbox') {
+                                        if ($sformControl['type'] == 'checkbox') {
                                             $checkBoxValue = $formData[$sformControl['column']];
                                             if ($checkBoxValue == 1)
                                                 $checkBoxValue = 1;
@@ -2347,7 +2475,7 @@ class TableManager
                                             $insertQuery[$sformControl['column']] = $formData[$sformControl['column']];
                                     }
                                 } else {
-                                    if ($formControl['type'] == '--checkbox') {
+                                    if ($formControl['type'] == 'checkbox') {
                                         $checkBoxValue = $formData[$formControl['column']];
                                         if ($checkBoxValue == 1)
                                             $checkBoxValue = 1;
@@ -2363,9 +2491,9 @@ class TableManager
                             }
                             if(isset($subItem['translate_form_input_control'])){
                                 foreach ($subItem['translate_form_input_control'] as $formControl) {
-                                    if ($formControl['type'] == '--group') {
+                                    if ($formControl['type'] == 'group') {
                                         foreach ($formControl['controls'] as $sformControl) {
-                                            if ($sformControl['type'] == '--checkbox') {
+                                            if ($sformControl['type'] == 'checkbox') {
                                                 $checkBoxValue = $formData[$sformControl['column']];
                                                 if ($checkBoxValue == 1)
                                                     $checkBoxValue = 1;
@@ -2377,7 +2505,7 @@ class TableManager
                                                 $insertQuery[$sformControl['column']] = $formData[$sformControl['column']];
                                         }
                                     } else {
-                                        if ($formControl['type'] == '--checkbox') {
+                                        if ($formControl['type'] == 'checkbox') {
                                             $checkBoxValue = $formData[$formControl['column']];
                                             if ($checkBoxValue == 1)
                                                 $checkBoxValue = 1;
@@ -2386,7 +2514,7 @@ class TableManager
                                             $insertQuery[$formControl['column']] = $checkBoxValue;
 
                                         } else
-                                            $insertQuery[$formControl['column']] = $formData[$formControl['column']];
+                                            $insertQuery[$formControl['column']] = is_array($formData[$formControl['column']]) ? json_encode($formData[$formControl['column']]) : $formData[$formControl['column']];
                                     }
 
 
@@ -2451,7 +2579,7 @@ class TableManager
 
                 DB::table($table)->where("id", "=", $id)->delete();
 
-                return 'success';
+                return Response::json("success", 200);
 
             }
         }
@@ -2515,7 +2643,7 @@ class TableManager
         if (empty($data)) {
             foreach ($this->form_input_control as $formControl) {
 
-                if ($formControl['type'] == '--group' && empty($data)) {
+                if ($formControl['type'] == 'group' && empty($data)) {
                     $controls = $formControl['controls'];
                     $data = $this->getCascade($parent, $child, $controls);
                 }
@@ -2524,7 +2652,7 @@ class TableManager
         if (empty($data)) {
             foreach ($this->form_input_control as $formControl) {
 
-                if ($formControl['type'] == '--combobox-addable') {
+                if ($formControl['type'] == 'combobox-addable') {
 
                     $data = $this->getCascade($parent, $child, $formControl['options']['form_input_control']);
 
@@ -2532,7 +2660,7 @@ class TableManager
 
                         foreach ($formControl['options']['form_input_control'] as $sformControl) {
 
-                            if ($sformControl['type'] == '--group' && empty($data)) {
+                            if ($sformControl['type'] == 'group' && empty($data)) {
                                 $controls = $sformControl['controls'];
                                 $this->getCascade($parent, $child, $controls);
                             }
@@ -2557,7 +2685,7 @@ class TableManager
 
                     foreach ($subItem['form_input_control'] as $formControl) {
 
-                        if ($formControl['type'] == '--group' && empty($data)) {
+                        if ($formControl['type'] == 'group' && empty($data)) {
                             $controls = $formControl['controls'];
                             $data = $this->getCascade($parent, $child, $controls);
                         }
@@ -2676,7 +2804,7 @@ class TableManager
 
         } else {
             $ext = $file->getClientOriginalExtension();
-            if ($ext == 'pdf' || $ext == 'swf' || $ext == 'doc' || $ext == 'docx' || $ext == 'xls' || $ext == 'xlsx' || $ext == 'ppt' || $ext == 'pptx') {
+            if ($ext == 'dwg' || $ext == 'pdf' || $ext == 'swf' || $ext == 'doc' || $ext == 'docx' || $ext == 'xls' || $ext == 'xlsx' || $ext == 'ppt' || $ext == 'pptx') {
                 $destinationPath = public_path() . DIRECTORY_SEPARATOR . $this->base_folder . DIRECTORY_SEPARATOR . 'docs' . DIRECTORY_SEPARATOR;
                 $destinationUrl = "/" . $this->base_folder . "/docs/";
 
@@ -2977,7 +3105,7 @@ class TableManager
                 if (isset($formControl['column']))
                     $table_data->addSelect("$this->table." . $formControl['column']);
 
-//            if($formControl['type'] == '--combogrid' || $formControl['type'] == '--combobox' || $formControl['type'] == '--tag' || $formControl['type'] == '--combobox-addable' || $formControl['type'] == '--combobox-hidden'){
+//            if($formControl['type'] == 'combogrid' || $formControl['type'] == 'combobox' || $formControl['type'] == 'tag' || $formControl['type'] == 'combobox-addable' || $formControl['type'] == 'combobox-hidden'){
 //
 //                $options = $formControl['options'];
 //
@@ -2986,13 +3114,13 @@ class TableManager
 //
 //            }
 
-                if ($formControl['type'] == '--group') {
+                if ($formControl['type'] == 'group') {
                     foreach ($formControl['controls'] as $subformControl) {
 
                         if (isset($subformControl['column']))
                             $table_data->addSelect("$this->table." . $subformControl['column']);
 
-//                    if($subformControl['type'] == '--combogrid' || $subformControl['type'] == '--combobox' || $subformControl['type'] == '--tag' || $subformControl['type'] == '--combobox-addable' || $subformControl['type'] == '--combobox-hidden'){
+//                    if($subformControl['type'] == 'combogrid' || $subformControl['type'] == 'combobox' || $subformControl['type'] == 'tag' || $subformControl['type'] == 'combobox-addable' || $subformControl['type'] == 'combobox-hidden'){
 //
 //                        if(isset($subformControl['save']) && $subformControl['save'] == false){
 //
